@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					   xmlns:s="library://ns.adobe.com/flex/spark" 
+					   xmlns:mx="library://ns.adobe.com/flex/mx" applicationComplete="initApp(event)" showStatusBar="false">
+	<fx:Script>
+		<![CDATA[
+			import com.adobe.serialization.json.JSON;
+			import com.seesmic.as3.xmpp.JID;
+			import com.seesmic.as3.xmpp.XMPP;
+			import com.seesmic.as3.xmpp.XMPPEvent;
+			import com.seesmic.as3.xmpp.xep.muc.MUC;
+			
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			//private static const HASH_AGENT:String = "hashsbagent";
+			//private static const SERVER_HOST:String = "imediamac19.uio.no";
+			//public static const SERVICE_HOST:String = "http://imediamac19.uio.no:4568";
+			private var conn:XMPP;
+			
+			[bindable] private var countryName:String = "";
+			[bindable] private var countryActive:String = "";
+			
+			protected function initApp(event:FlexEvent):void {
+				stage.displayState = StageDisplayState.FULL_SCREEN;
+				
+				conn = new XMPP();
+				conn.auto_reconnect = false;
+				
+				conn.setJID(resourceManager.getString('resources', 'HASH_AGENT')+"@"+resourceManager.getString('resources', 'SERVER_HOST')+"/"+resourceManager.getString('resources', 'HASH_AGENT'));
+				conn.setPassword(resourceManager.getString('resources', 'HASH_AGENT'));
+				conn.setServer(resourceManager.getString('resources', 'SERVER_HOST'));
+				conn.addEventListener(XMPPEvent.SESSION, handleSession);
+				conn.addPlugin(new MUC());
+				conn.connect();
+			}
+			
+			private final function handleSession(e:XMPPEvent):void {
+				conn.sendPresence();
+				conn.addEventListener(XMPPEvent.MESSAGE, handleMessage);
+				conn.plugin['muc'].joinRoom('conference.'+resourceManager.getString('resources', 'SERVER_HOST'), 'tweakhashfelles', resourceManager.getString('resources', 'HASH_AGENT'));
+			}
+			
+			private function handleMessage(e:XMPPEvent):void {
+				
+				var oldMessage:Boolean = false;
+				var xm:XML = e.stanza.xml as XML;
+				for each (var i:XML in xm.elements()) {
+					if(i.name() == "urn:xmpp:delay::delay") {
+						oldMessage = true;
+					}
+				}
+				
+				if(!oldMessage) {
+					countryName = getNorwegianCountryName(new String(e.stanza.from.user).substr(6));
+					
+					var res:Object = com.adobe.serialization.json.JSON.decode(String(e.stanza.body));
+					
+					if(res.actionRequest == "stage") {
+						getMessagesPerCountry.url = resourceManager.getString('resources', 'SERVICE_HOST')+"/tweakTweetByCountry?country="+countryName;
+						getMessagesPerCountry.send();
+					}
+					else if(res.actionRequest == "updatePosition") {
+						for (var j:int = 0; j < board.numElements; j++) {
+							if((board.getElementAt(j) as TweetRenderer).tweetId == res.tweetId) {
+								(board.getElementAt(j) as TweetRenderer).x = (res.xpos*stage.stageWidth) / 100;
+								(board.getElementAt(j) as TweetRenderer).y = ((res.ypos*(stage.stageHeight-45)) / 100) + 45;
+							}
+						}
+					}
+					else if(res.actionRequest == "updateDisplay") {
+						for (var k:int = 0; k < board.numElements; k++) {
+							if((board.getElementAt(k) as TweetRenderer).tweetId == res.tweetId) {
+								if(res.display) {
+									(board.getElementAt(k) as TweetRenderer).currentState = "normal";
+								}
+								else {
+									(board.getElementAt(k) as TweetRenderer).currentState = "hidden";
+								}
+							}
+						}
+					}
+					else if(res.actionRequest == "reset" && countryActive == countryName) {
+						titleLabel.text = "";
+						this.currentState = "default";
+					}
+				}	
+			}			
+			
+			protected function getNorwegianCountryName(englishName:String):String {
+				switch(englishName) {
+					case "france":
+						return "frankrike";
+						break;
+					case "germany":
+						return "tyskland";
+						break;
+					case "russia":
+						return "russland";
+						break;
+					case "italy":
+						return "italia";
+						break;
+					case "turkey":
+						return "tyrkia";
+						break;
+					case "england":
+						return "england";
+						break;
+					case "ungarrike":
+						return "ungarrike";
+						break;
+					case "history":
+						return "historie";
+						break;
+					default:
+						return null;
+						break;
+				}
+			}
+			
+			protected function getMessagesPerCountry_resultHandler(event:ResultEvent):void {
+				countryActive = countryName;
+				
+				if(countryName == "ungarrike") {
+					titleLabel.text = "#østerrike-ungarn";
+				}
+				else {
+					titleLabel.text = "#"+countryName;
+				}
+				
+				conn.plugin['muc'].sendMessage('conference.'+resourceManager.getString('resources', 'SERVER_HOST'), 'tweakhashfelles', countryName, null);
+				this.currentState = "country";
+				board.removeAllElements();
+				var res:Object = com.adobe.serialization.json.JSON.decode(String(event.result));
+				
+				var country:TweetRenderer;
+				for each (var land:Object in res) {
+					country = new TweetRenderer();
+					board.addElement(country);
+					country.content.text = land.content;
+					country.creator.text = land.creator + ":";
+					country.tweetId = land._id;
+					country.buttonMode = true;
+					country.mouseChildren = false;
+					country.x = (land.xpos*stage.stageWidth) / 100;
+					country.y = ((land.ypos*(stage.stageHeight-45)) / 100) + 45;
+					
+					if(land.display) {
+						country.currentState = "normal";
+					}
+					else {
+						country.currentState = "hidden";
+					}					
+				}
+			}
+			
+			protected function getMessagesPerCountry_faultHandler(event:FaultEvent):void {
+				Alert.show("A problem occured when retrieving the tweets. Contact administrator.", "Retrieve tweets error");
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<s:HTTPService id="getMessagesPerCountry" result="getMessagesPerCountry_resultHandler(event)" fault="getMessagesPerCountry_faultHandler(event)" resultFormat="text" method="GET" />
+	</fx:Declarations>
+	
+	<s:states>
+		<s:State name="default" />
+		<s:State name="country" />
+	</s:states>
+	
+	<s:BorderContainer width="100%" height="45" backgroundColor="#666666">
+		<s:Label left="20" right="20" textAlign="left" horizontalCenter="0" verticalCenter="0" id="titleLabel" fontSize="20" color="#FFFFFF"/>
+	</s:BorderContainer>
+	
+	<s:Label horizontalCenter="0" verticalCenter="0" text="NO SESSION" fontWeight="bold" fontSize="40" includeIn="default" />
+	<s:Group width="100%" height="100%" id="board" includeIn="country" />
+	<s:Label color="#333333" text="Copyright Jeremy Toussaint @ InterMedia" fontSize="10" bottom="2" right="2" />
+</s:WindowedApplication>
