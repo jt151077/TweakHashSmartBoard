@@ -15,9 +15,6 @@
 			import mx.rpc.events.FaultEvent;
 			import mx.rpc.events.ResultEvent;
 			
-			//private static const HASH_AGENT:String = "hashsbagent";
-			//private static const SERVER_HOST:String = "imediamac19.uio.no";
-			//public static const SERVICE_HOST:String = "http://imediamac19.uio.no:4568";
 			private var conn:XMPP;
 			
 			[bindable] private var countryName:String = "";
@@ -40,7 +37,7 @@
 			private final function handleSession(e:XMPPEvent):void {
 				conn.sendPresence();
 				conn.addEventListener(XMPPEvent.MESSAGE, handleMessage);
-				conn.plugin['muc'].joinRoom('conference.'+resourceManager.getString('resources', 'SERVER_HOST'), 'tweakhashfelles', resourceManager.getString('resources', 'HASH_AGENT'));
+				conn.plugin['muc'].joinRoom('conference.'+resourceManager.getString('resources', 'SERVER_HOST'), resourceManager.getString('resources', 'HASH_ROOM_NAME'), resourceManager.getString('resources', 'HASH_AGENT'));
 			}
 			
 			private function handleMessage(e:XMPPEvent):void {
@@ -131,7 +128,7 @@
 					titleLabel.text = "#"+countryName;
 				}
 				
-				conn.plugin['muc'].sendMessage('conference.'+resourceManager.getString('resources', 'SERVER_HOST'), 'tweakhashfelles', countryName, null);
+				conn.plugin['muc'].sendMessage('conference.'+resourceManager.getString('resources', 'SERVER_HOST'), resourceManager.getString('resources', 'HASH_ROOM_NAME'), countryName, null);
 				this.currentState = "country";
 				board.removeAllElements();
 				var res:Object = com.adobe.serialization.json.JSON.decode(String(event.result));
